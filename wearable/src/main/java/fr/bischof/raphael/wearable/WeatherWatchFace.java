@@ -28,13 +28,15 @@ import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.support.v4.content.ContextCompat;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
-import android.text.format.Time;
 import android.view.SurfaceHolder;
 import android.view.WindowInsets;
 
 import java.lang.ref.WeakReference;
+import java.util.Calendar;
+import java.util.GregorianCalendar;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
@@ -68,19 +70,19 @@ public class WeatherWatchFace extends CanvasWatchFaceService {
         final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                mTime.clear(intent.getStringExtra("time-zone"));
-                mTime.setToNow();
+                mCalendar = new GregorianCalendar(TimeZone.getTimeZone(intent.getStringExtra("time-zone")));
             }
         };
 
         boolean mRegisteredTimeZoneReceiver = false;
 
         Paint mBackgroundPaint;
+        Paint mBackgroundPaintAmbient;
         Paint mTextPaint;
 
         boolean mAmbient;
 
-        Time mTime;
+        Calendar mCalendar;
 
         float mXOffset;
         float mYOffset;
@@ -106,10 +108,13 @@ public class WeatherWatchFace extends CanvasWatchFaceService {
             mBackgroundPaint = new Paint();
             mBackgroundPaint.setColor(resources.getColor(R.color.digital_background));
 
+            mBackgroundPaintAmbient = new Paint();
+            mBackgroundPaintAmbient.setColor(resources.getColor(R.color.digital_background_ambient));
+
             mTextPaint = new Paint();
             mTextPaint = createTextPaint(resources.getColor(R.color.digital_text));
 
-            mTime = new Time();
+            mCalendar = new GregorianCalendar();
         }
 
         @Override
@@ -134,8 +139,7 @@ public class WeatherWatchFace extends CanvasWatchFaceService {
                 registerReceiver();
 
                 // Update time zone in case it changed while we weren't visible.
-                mTime.clear(TimeZone.getDefault().getID());
-                mTime.setToNow();
+                mCalendar = new GregorianCalendar();
             } else {
                 unregisterReceiver();
             }
@@ -208,13 +212,17 @@ public class WeatherWatchFace extends CanvasWatchFaceService {
         @Override
         public void onDraw(Canvas canvas, Rect bounds) {
             // Draw the background.
-            canvas.drawRect(0, 0, bounds.width(), bounds.height(), mBackgroundPaint);
+            if (mAmbient){
+                canvas.drawRect(0, 0, bounds.width(), bounds.height(), mBackgroundPaintAmbient);
+            }else{
+                canvas.drawRect(0, 0, bounds.width(), bounds.height(), mBackgroundPaint);
+            }
 
             // Draw H:MM in ambient mode or H:MM:SS in interactive mode.
-            mTime.setToNow();
+            mCalendar = new GregorianCalendar();
             String text = mAmbient
-                    ? String.format("%d:%02d", mTime.hour, mTime.minute)
-                    : String.format("%d:%02d:%02d", mTime.hour, mTime.minute, mTime.second);
+                    ? String.format("%d:%02d", mCalendar.get(Calendar.HOUR_OF_DAY), Calendar.MINUTE)
+                    : String.format("%d:%02d:%02d", mCalendar.get(Calendar.HOUR_OF_DAY), mCalendar.get(Calendar.MINUTE), mCalendar.get(Calendar.SECOND));
             canvas.drawText(text, mXOffset, mYOffset, mTextPaint);
         }
 
