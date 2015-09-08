@@ -22,6 +22,7 @@ import android.content.SharedPreferences;
 import android.content.res.TypedArray;
 import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -107,6 +108,10 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
     static final int COL_WEATHER_CONDITION_ID = 6;
     static final int COL_COORD_LAT = 7;
     static final int COL_COORD_LONG = 8;
+    private int mMaxTemp;
+    private int mMinTemp;
+    private Bitmap mIcon;
+    private boolean mMustSendDataItem = false;
 
     /**
      * A callback interface that all activities containing this fragment must
@@ -147,6 +152,7 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
     public void onPause() {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getActivity());
         sp.unregisterOnSharedPreferenceChangeListener(this);
+        mGoogleApiClient.disconnect();
         super.onPause();
     }
 
@@ -350,6 +356,18 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
         if ( data.getCount() == 0 ) {
             getActivity().supportStartPostponedEnterTransition();
         } else {
+            data.moveToFirst();
+
+            mMinTemp = data.getInt(data.getColumnIndex(WeatherContract.WeatherEntry.COLUMN_MIN_TEMP));
+            mMaxTemp = data.getInt(data.getColumnIndex(WeatherContract.WeatherEntry.COLUMN_MAX_TEMP));
+            int weatherId = data.getInt(ForecastFragment.COL_WEATHER_CONDITION_ID);
+            mIcon = BitmapFactory.decodeResource(getResources(),Utility.getArtResourceForWeatherCondition(weatherId));
+
+            if (!mGoogleApiClient.isConnected()){
+                mMustSendDataItem = true;
+            }else{
+                sendCurrentWeather();
+            }
             mRecyclerView.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
                 @Override
                 public boolean onPreDraw() {
@@ -457,7 +475,9 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
 
     @Override
     public void onConnected(Bundle bundle) {
-
+        if (mMustSendDataItem){
+            sendCurrentWeather();
+        }
     }
 
     @Override
@@ -470,12 +490,12 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
 
     }
 
-    private void sendCurrentWeather(int minTemp, int maxTemp, long timestamp, Bitmap icon){
+    private void sendCurrentWeather(){
         PutDataMapRequest putDataMapRequest = PutDataMapRequest.create(DATAMAP_REQUEST_PATH);
-        putDataMapRequest.getDataMap().putLong("timestamp", timestamp);
-        putDataMapRequest.getDataMap().putInt("maxtemp", maxTemp);
-        putDataMapRequest.getDataMap().putInt("mintemp", minTemp);
-        putDataMapRequest.getDataMap().putAsset("icon", createAssetFromBitmap(icon));
+        putDataMapRequest.getDataMap().putLong("timestamp", System.currentTimeMillis());
+        putDataMapRequest.getDataMap().putInt("maxtemp", mMaxTemp);
+        putDataMapRequest.getDataMap().putInt("mintemp", mMinTemp);
+        putDataMapRequest.getDataMap().putAsset("icon", createAssetFromBitmap(mIcon));
 
         PutDataRequest dataRequest = putDataMapRequest.asPutDataRequest();
         Wearable.DataApi.putDataItem(mGoogleApiClient,dataRequest)
@@ -485,6 +505,7 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
 
                     }
                 });
+        //TODO: Make the same in SyncAdapter
     }
 
     private static Asset createAssetFromBitmap(Bitmap bitmap) {
