@@ -176,6 +176,7 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
                     Log.e(LOG_TAG, "Error closing stream", e);
                 }
             }
+            WearableWatchFaceListener.sendWeatherData(getContext());
         }
         return;
     }

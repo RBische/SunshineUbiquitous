@@ -63,23 +63,20 @@ import java.io.ByteArrayOutputStream;
 /**
  * Encapsulates fetching the forecast and displaying it as a {@link android.support.v7.widget.RecyclerView} layout.
  */
-public class ForecastFragment extends Fragment implements LoaderManager.LoaderCallbacks<Cursor>, SharedPreferences.OnSharedPreferenceChangeListener,GoogleApiClient.ConnectionCallbacks,GoogleApiClient.OnConnectionFailedListener {
+public class ForecastFragment extends Fragment implements LoaderManager.LoaderCallbacks<Cursor>, SharedPreferences.OnSharedPreferenceChangeListener {
     public static final String LOG_TAG = ForecastFragment.class.getSimpleName();
-    private static final String DATAMAP_REQUEST_PATH = "/today-weather";
+    public static final String DATAMAP_REQUEST_PATH = "/today-weather";
     private ForecastAdapter mForecastAdapter;
     private RecyclerView mRecyclerView;
     private boolean mUseTodayLayout, mAutoSelectView;
     private int mChoiceMode;
     private boolean mHoldForTransition;
     private long mInitialSelectedDate = -1;
-    private GoogleApiClient mGoogleApiClient;
-
-    private static final String SELECTED_KEY = "selected_position";
 
     private static final int FORECAST_LOADER = 0;
     // For the forecast view we're showing only a small subset of the stored data.
     // Specify the columns we need.
-    private static final String[] FORECAST_COLUMNS = {
+    public static final String[] FORECAST_COLUMNS = {
             // In this case the id needs to be fully qualified with a table name, since
             // the content provider joins the location & weather tables in the background
             // (both have an _id column)
@@ -105,13 +102,9 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
     static final int COL_WEATHER_MAX_TEMP = 3;
     static final int COL_WEATHER_MIN_TEMP = 4;
     static final int COL_LOCATION_SETTING = 5;
-    static final int COL_WEATHER_CONDITION_ID = 6;
+    public static final int COL_WEATHER_CONDITION_ID = 6;
     static final int COL_COORD_LAT = 7;
     static final int COL_COORD_LONG = 8;
-    private int mMaxTemp;
-    private int mMinTemp;
-    private Bitmap mIcon;
-    private boolean mMustSendDataItem = false;
 
     /**
      * A callback interface that all activities containing this fragment must
@@ -133,18 +126,12 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
         super.onCreate(savedInstanceState);
         // Add this line in order for this fragment to handle menu events.
         setHasOptionsMenu(true);
-        mGoogleApiClient = new GoogleApiClient.Builder(getActivity())
-                .addApi(Wearable.API)
-                .addConnectionCallbacks(this)
-                .addOnConnectionFailedListener(this)
-                .build();
     }
 
     @Override
     public void onResume() {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getActivity());
         sp.registerOnSharedPreferenceChangeListener(this);
-        mGoogleApiClient.connect();
         super.onResume();
     }
 
@@ -152,7 +139,6 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
     public void onPause() {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getActivity());
         sp.unregisterOnSharedPreferenceChangeListener(this);
-        mGoogleApiClient.disconnect();
         super.onPause();
     }
 
@@ -358,16 +344,6 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
         } else {
             data.moveToFirst();
 
-            mMinTemp = data.getInt(data.getColumnIndex(WeatherContract.WeatherEntry.COLUMN_MIN_TEMP));
-            mMaxTemp = data.getInt(data.getColumnIndex(WeatherContract.WeatherEntry.COLUMN_MAX_TEMP));
-            int weatherId = data.getInt(ForecastFragment.COL_WEATHER_CONDITION_ID);
-            mIcon = BitmapFactory.decodeResource(getResources(),Utility.getArtResourceForWeatherCondition(weatherId));
-
-            if (!mGoogleApiClient.isConnected()){
-                mMustSendDataItem = true;
-            }else{
-                sendCurrentWeather();
-            }
             mRecyclerView.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
                 @Override
                 public boolean onPreDraw() {
@@ -381,9 +357,9 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
                             Cursor data = mForecastAdapter.getCursor();
                             int count = data.getCount();
                             int dateColumn = data.getColumnIndex(WeatherContract.WeatherEntry.COLUMN_DATE);
-                            for ( int i = 0; i < count; i++ ) {
+                            for (int i = 0; i < count; i++) {
                                 data.moveToPosition(i);
-                                if ( data.getLong(dateColumn) == mInitialSelectedDate ) {
+                                if (data.getLong(dateColumn) == mInitialSelectedDate) {
                                     position = i;
                                     break;
                                 }
@@ -397,7 +373,7 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
                         if (null != vh && mAutoSelectView) {
                             mForecastAdapter.selectView(vh);
                         }
-                        if ( mHoldForTransition ) {
+                        if (mHoldForTransition) {
                             getActivity().supportStartPostponedEnterTransition();
                         }
                         return true;
@@ -473,44 +449,4 @@ public class ForecastFragment extends Fragment implements LoaderManager.LoaderCa
         }
     }
 
-    @Override
-    public void onConnected(Bundle bundle) {
-        if (mMustSendDataItem){
-            sendCurrentWeather();
-        }
-    }
-
-    @Override
-    public void onConnectionSuspended(int i) {
-
-    }
-
-    @Override
-    public void onConnectionFailed(ConnectionResult connectionResult) {
-
-    }
-
-    private void sendCurrentWeather(){
-        PutDataMapRequest putDataMapRequest = PutDataMapRequest.create(DATAMAP_REQUEST_PATH);
-        putDataMapRequest.getDataMap().putLong("timestamp", System.currentTimeMillis());
-        putDataMapRequest.getDataMap().putInt("maxtemp", mMaxTemp);
-        putDataMapRequest.getDataMap().putInt("mintemp", mMinTemp);
-        putDataMapRequest.getDataMap().putAsset("icon", createAssetFromBitmap(mIcon));
-
-        PutDataRequest dataRequest = putDataMapRequest.asPutDataRequest();
-        Wearable.DataApi.putDataItem(mGoogleApiClient,dataRequest)
-                .setResultCallback(new ResultCallback<DataApi.DataItemResult>() {
-                    @Override
-                    public void onResult(DataApi.DataItemResult dataItemResult) {
-
-                    }
-                });
-        //TODO: Make the same in SyncAdapter
-    }
-
-    private static Asset createAssetFromBitmap(Bitmap bitmap) {
-        final ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, byteStream);
-        return Asset.createFromBytes(byteStream.toByteArray());
-    }
 }

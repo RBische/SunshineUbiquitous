@@ -20,7 +20,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -33,6 +32,7 @@ import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.service.carrier.CarrierMessagingService;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
 import android.util.Log;
@@ -41,6 +41,7 @@ import android.view.WindowInsets;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.wearable.Asset;
 import com.google.android.gms.wearable.DataApi;
 import com.google.android.gms.wearable.DataEvent;
@@ -48,9 +49,11 @@ import com.google.android.gms.wearable.DataEventBuffer;
 import com.google.android.gms.wearable.DataItem;
 import com.google.android.gms.wearable.DataMap;
 import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.MessageApi;
+import com.google.android.gms.wearable.PutDataMapRequest;
+import com.google.android.gms.wearable.PutDataRequest;
 import com.google.android.gms.wearable.Wearable;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
@@ -64,6 +67,7 @@ import java.util.concurrent.TimeUnit;
  * low-bit ambient mode, the text is drawn without anti-aliasing in ambient mode.
  */
 public class WeatherWatchFace extends CanvasWatchFaceService {
+    public static final String ASK_WEATHER_MESSAGE_PATH = "/ask_weather_data";
     private static final String TAG = "WeatherWatchFace";
     private static final Typeface NORMAL_TYPEFACE =
             Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL);
@@ -115,7 +119,6 @@ public class WeatherWatchFace extends CanvasWatchFaceService {
 
         Calendar mCalendar;
 
-        float mXOffset;
         float mYOffset;
         private float mXHighTempOffset;
         private float mYHighTempOffset;
@@ -250,8 +253,6 @@ public class WeatherWatchFace extends CanvasWatchFaceService {
             // Load resources that have alternate values for round watches.
             Resources resources = WeatherWatchFace.this.getResources();
             boolean isRound = insets.isRound();
-            mXOffset = resources.getDimension(isRound
-                    ? R.dimen.time_x_offset_round : R.dimen.time_x_offset);
             mXHighTempOffset = resources.getDimension(isRound
                     ? R.dimen.high_x_offset_round : R.dimen.high_x_offset);
             mXWeatherIconTempOffset = resources.getDimension(isRound
@@ -318,9 +319,11 @@ public class WeatherWatchFace extends CanvasWatchFaceService {
 
             String dayText = sdfDay.format(mCalendar.getTime()).toUpperCase().substring(0,3) + ", " + sdfMonth.format(mCalendar.getTime()).toUpperCase().substring(0, 3) + " " + sdfRest.format(mCalendar.getTime());
             float width = mTextDayPaint.measureText(dayText);
-            float dayWidth = bounds.width()/2-width/2;
-            canvas.drawText(text, mXOffset, mYOffset, mTextPaint);
-            canvas.drawText(dayText,dayWidth,mYDayOffset,mTextDayPaint);
+            float widthTime = mTextPaint.measureText(text);
+            float dayX = bounds.width()/2-width/2;
+            float timeX = bounds.width()/2-widthTime/2;
+            canvas.drawText(text, timeX, mYOffset, mTextPaint);
+            canvas.drawText(dayText,dayX,mYDayOffset,mTextDayPaint);
             canvas.drawText(mHighTemp,mXHighTempOffset,mYHighTempOffset,mHighTempPaint);
             canvas.drawText(mLowTemp,mXLowTempOffset,mYLowTempOffset,mLowTempPaint);
 
@@ -370,6 +373,7 @@ public class WeatherWatchFace extends CanvasWatchFaceService {
             if (Log.isLoggable(TAG, Log.DEBUG)) {
                 Log.d(TAG, "onConnected: " + bundle);
             }
+            sendStartMessage();
             Wearable.DataApi.addListener(mGoogleApiClient, Engine.this);
         }
 
@@ -435,7 +439,7 @@ public class WeatherWatchFace extends CanvasWatchFaceService {
 
         public Bitmap loadBitmapFromAsset(Asset asset) {
             if (asset == null) {
-                throw new IllegalArgumentException("Asset must be non-null");
+                return null;
             }
             ConnectionResult result =
                     mGoogleApiClient.blockingConnect(TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -453,6 +457,18 @@ public class WeatherWatchFace extends CanvasWatchFaceService {
             }
             // decode the stream into a bitmap
             return BitmapFactory.decodeStream(assetInputStream);
+        }
+
+        private void sendStartMessage(){
+            PutDataMapRequest putDataMapRequest = PutDataMapRequest.create(ASK_WEATHER_MESSAGE_PATH);
+            putDataMapRequest.getDataMap().putLong("timestamp", System.currentTimeMillis());
+            PutDataRequest dataRequest = putDataMapRequest.asPutDataRequest();
+            Wearable.DataApi.putDataItem(mGoogleApiClient, dataRequest)
+                    .setResultCallback(new ResultCallback<DataApi.DataItemResult>() {
+                        @Override
+                        public void onResult(DataApi.DataItemResult dataItemResult) {
+                        }
+                    });
         }
     }
 
